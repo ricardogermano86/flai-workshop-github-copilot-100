@@ -10,8 +10,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch("/activities");
       const activities = await response.json();
 
-      // Clear loading message
+      // Clear loading message and reset dropdown options
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -21,7 +22,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const spotsLeft = details.max_participants - details.participants.length;
 
         const participantItems = details.participants.length
-          ? details.participants.map(p => `<li>${p}</li>`).join("")
+          ? details.participants.map(p => `
+              <li data-email="${p}" data-activity="${name}">
+                <span class="participant-email">${p}</span>
+                <button class="unregister-btn" title="Unregister participant" aria-label="Unregister ${p}">&times;</button>
+              </li>`).join("")
           : `<li class="no-participants">No participants yet — be the first!</li>`;
 
         activityCard.innerHTML = `
@@ -36,6 +41,39 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
 
         activitiesList.appendChild(activityCard);
+
+        // Attach unregister handlers
+        activityCard.querySelectorAll(".unregister-btn").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const li = btn.closest("li");
+            const email = li.dataset.email;
+            const activity = li.dataset.activity;
+            try {
+              const res = await fetch(
+                `/activities/${encodeURIComponent(activity)}/signup?email=${encodeURIComponent(email)}`,
+                { method: "DELETE" }
+              );
+              if (res.ok) {
+                li.remove();
+                // Update spots count
+                const spotsEl = activityCard.querySelector(".spots-badge");
+                if (spotsEl) {
+                  const current = parseInt(spotsEl.textContent);
+                  const newCount = current + 1;
+                  spotsEl.textContent = `${newCount} spot${newCount !== 1 ? "s" : ""} left`;
+                  spotsEl.className = `spots-badge spots-open`;
+                }
+                // Show empty state if no participants left
+                const list = activityCard.querySelector(".participants-list");
+                if (list && list.querySelectorAll("li:not(.no-participants)").length === 0) {
+                  list.innerHTML = `<li class="no-participants">No participants yet — be the first!</li>`;
+                }
+              }
+            } catch (err) {
+              console.error("Error unregistering participant:", err);
+            }
+          });
+        });
 
         // Add option to select dropdown
         const option = document.createElement("option");
@@ -70,6 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
